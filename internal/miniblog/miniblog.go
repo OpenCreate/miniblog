@@ -16,8 +16,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/opencreate/miniblog/internal/pkg/core"
-	"github.com/opencreate/miniblog/internal/pkg/errno"
 	"github.com/opencreate/miniblog/internal/pkg/log"
 	"github.com/opencreate/miniblog/internal/pkg/middleware"
 	"github.com/opencreate/miniblog/pkg/version/verflag"
@@ -65,20 +63,20 @@ func NewMiniblogCommand() *cobra.Command {
 }
 
 func run() error {
+
+	if err := initStore(); err != nil {
+		return err
+	}
+
 	gin.SetMode(viper.GetString("runmode"))
 	g := gin.New()
 	mws := []gin.HandlerFunc{gin.Recovery(), middleware.NoCache, middleware.Cors, middleware.Secure, middleware.RequestID()}
 
 	g.Use(mws...)
 
-	g.NoRoute(func(ctx *gin.Context) {
-		core.WriteResponse(ctx, errno.ErrPageNotFound, nil)
-	})
-
-	g.GET("/health", func(ctx *gin.Context) {
-		log.C(ctx).Infow("Healthz function called")
-		core.WriteResponse(ctx, nil, map[string]string{"status": "ok"})
-	})
+	if err := installRouters(g); err != nil {
+		return err
+	}
 
 	httpsrv := http.Server{
 		Addr:    viper.GetString("addr"),

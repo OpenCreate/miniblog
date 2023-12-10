@@ -16,4 +16,13 @@ var (
 	ErrInvalidParameter = &Errno{HTTP: 400, Code: "InvalidParameter", Message: "Parameter verification failed."}
 	// InternalServerError 表示所有未知的服务器端错误.
 	InternalServerError = &Errno{HTTP: 500, Code: "InternalError", Message: "Internal server error."}
+
+	// ErrSignToken 表示签发 JWT Token 时出错.
+	ErrSignToken = &Errno{HTTP: 401, Code: "AuthFailure.SignTokenError", Message: "Error occurred while signing the JSON web token."}
+
+	// ErrTokenInvalid 表示 JWT Token 格式错误.
+	ErrTokenInvalid = &Errno{HTTP: 401, Code: "AuthFailure.TokenInvalid", Message: "Token was invalid."}
+
+	// ErrUnauthorized 表示请求没有被授权.
+	ErrUnauthorized = &Errno{HTTP: 401, Code: "AuthFailure.Unauthorized", Message: "Unauthorized."}
 )

@@ -6,10 +6,20 @@
 package miniblog
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
+	"github.com/gin-gonic/gin"
+	"github.com/opencreate/miniblog/internal/pkg/core"
+	"github.com/opencreate/miniblog/internal/pkg/errno"
 	"github.com/opencreate/miniblog/internal/pkg/log"
+	"github.com/opencreate/miniblog/internal/pkg/middleware"
 	"github.com/opencreate/miniblog/pkg/version/verflag"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -55,8 +65,47 @@ func NewMiniblogCommand() *cobra.Command {
 }
 
 func run() error {
-	settting, _ := json.MarshalIndent(viper.AllSettings(), "", "    ")
-	log.Infow(string(settting))
-	log.Infow(viper.GetString("db.username"))
+	gin.SetMode(viper.GetString("runmode"))
+	g := gin.New()
+	mws := []gin.HandlerFunc{gin.Recovery(), middleware.NoCache, middleware.Cors, middleware.Secure, middleware.RequestID()}
+
+	g.Use(mws...)
+
+	g.NoRoute(func(ctx *gin.Context) {
+		core.WriteResponse(ctx, errno.ErrPageNotFound, nil)
+	})
+
+	g.GET("/health", func(ctx *gin.Context) {
+		log.C(ctx).Infow("Healthz function called")
+		core.WriteResponse(ctx, nil, map[string]string{"status": "ok"})
+	})
+
+	httpsrv := http.Server{
+		Addr:    viper.GetString("addr"),
+		Handler: g,
+	}
+	log.Infow("Start to listening the incoming requests on http address", "addr", viper.GetString("addr"))
+	go func() {
+		if err := httpsrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalw(err.Error())
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM) // 此处不会阻塞
+	<-quit                                               // 阻塞在此，当接收到上述两种信号时才会往下执行
+	log.Infow("Shutting down server ...")
+
+	// 创建 ctx 用于通知服务器 goroutine, 它有 10 秒时间完成当前正在处理的请求
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// 10 秒内优雅关闭服务（将未处理完的请求处理完再关闭服务），超过 10 秒就超时退出
+	if err := httpsrv.Shutdown(ctx); err != nil {
+		log.Errorw("Insecure Server forced to shutdown", "err", err)
+		return err
+	}
+
+	log.Infow("Server exiting")
 	return nil
 }

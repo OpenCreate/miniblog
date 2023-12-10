@@ -6,9 +6,11 @@
 package log
 
 import (
+	"context"
 	"sync"
 	"time"
 
+	"github.com/opencreate/miniblog/internal/pkg/known"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -139,4 +141,23 @@ func Fatalw(msg string, keysAndValues ...interface{}) {
 
 func (l *zapLogger) Fatalw(msg string, keysAndValues ...interface{}) {
 	l.z.Sugar().Fatalw(msg, keysAndValues...)
+}
+
+func C(ctx context.Context) *zapLogger {
+	return std.C(ctx)
+}
+
+func (l *zapLogger) clone() *zapLogger {
+	lc := *l
+	return &lc
+}
+
+// 为了防止 X-Request-ID 污染，针对每一个请求，我们都深拷贝一个 *zapLogger 对象，然后再添加 X-Request-ID
+func (l *zapLogger) C(ctx context.Context) *zapLogger {
+	lc := l.clone()
+
+	if requestID := ctx.Value(known.XRequestIDKey); requestID != nil {
+		lc.z = lc.z.With(zap.Any(known.XRequestIDKey, requestID))
+	}
+	return lc
 }
